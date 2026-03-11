@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+.mypy_cache/
+.pytest_cache/
+.coverage*
+
+# Environments
+.venv/
+.env
+.env.*
+
+# OS / Editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# App runtime data
+uploads/
+outputs/
+# Ignore any stray transcripts in project root
+/通话录音 2_20260311_140500_14e43837.txt
+
+# Logs
+*.log
+
+# Node (if any CDN dev left cache)
+node_modules/

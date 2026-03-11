@@ -1,0 +1,965 @@
+<!doctype html>
+<html lang="zh-CN" class="h-full">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>语音转写控制台</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'ui-sans-serif', 'system-ui'] },
+                    colors: {
+                        brand: { 50: '#eff6ff', 100: '#dbeafe', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8' },
+                        sv: { 50: '#fdf4ff', 100: '#fae8ff', 500: '#a855f7', 600: '#9333ea', 700: '#7e22ce' },
+                    },
+                    animation: {
+                        'pulse-dot': 'pulse 1.5s cubic-bezier(0.4,0,0.6,1) infinite',
+                        'fade-in': 'fadeIn 0.2s ease-out',
+                    },
+                    keyframes: {
+                        fadeIn: { '0%': { opacity: '0', transform: 'translateY(4px)' }, '100%': { opacity: '1', transform: 'translateY(0)' } },
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Inter', ui-sans-serif, system-ui;
+        }
+
+        /* ── Tooltip ── */
+        [data-tip] {
+            position: relative;
+        }
+
+        [data-tip]::after {
+            content: attr(data-tip);
+            position: absolute;
+            left: 50%;
+            bottom: calc(100% + 10px);
+            transform: translateX(-50%);
+            width: 230px;
+            background: #0f172a;
+            color: #e2e8f0;
+            font-size: 11.5px;
+            font-weight: 400;
+            line-height: 1.65;
+            padding: 8px 11px;
+            border-radius: 8px;
+            white-space: pre-line;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity .15s;
+            z-index: 9999;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, .3);
+        }
+
+        [data-tip]::before {
+            content: '';
+            position: absolute;
+            left: 50%;
+            bottom: calc(100% + 4px);
+            transform: translateX(-50%);
+            border: 5px solid transparent;
+            border-top-color: #0f172a;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity .15s;
+            z-index: 9999;
+        }
+
+        [data-tip]:hover::after,
+        [data-tip]:hover::before {
+            opacity: 1;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 5px;
+            height: 5px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 99px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+
+        /* Result textarea */
+        #resultBox {
+            font-family: 'JetBrains Mono', 'Menlo', 'Consolas', monospace;
+            font-size: 13px;
+            line-height: 1.75;
+            resize: none;
+            outline: none;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        /* Pulse dot */
+        @keyframes pulse-ring {
+            0% {
+                transform: scale(.8);
+                opacity: 1;
+            }
+
+            100% {
+                transform: scale(2);
+                opacity: 0;
+            }
+        }
+
+        .pulse-dot::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            background: #22c55e;
+            animation: pulse-ring 1.2s ease-out infinite;
+        }
+
+        /* Form elements */
+        .form-control {
+            width: 100%;
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 7px 10px;
+            font-size: 13px;
+            color: #1e293b;
+            outline: none;
+            transition: border-color .15s, box-shadow .15s;
+        }
+
+        .form-control:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, .15);
+        }
+
+        select.form-control {
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 10px center;
+            padding-right: 28px;
+        }
+
+        textarea.form-control {
+            resize: vertical;
+            min-height: 72px;
+        }
+
+        /* Engine switcher */
+        .engine-btn {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 10px;
+            border-radius: 7px;
+            font-size: 11.5px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all .15s;
+            border: 1.5px solid transparent;
+        }
+        .engine-btn.active-whisper {
+            background: #eff6ff;
+            color: #2563eb;
+            border-color: #bfdbfe;
+        }
+        .engine-btn.active-sv {
+            background: #fdf4ff;
+            color: #9333ea;
+            border-color: #e9d5ff;
+        }
+        .engine-btn:not(.active-whisper):not(.active-sv) {
+            color: #94a3b8;
+        }
+        .engine-btn:not(.active-whisper):not(.active-sv):hover {
+            color: #475569;
+            background: #f1f5f9;
+        }
+    </style>
+</head>
+
+<body class="h-full bg-slate-50 text-slate-800 antialiased">
+
+    <!-- ── NAVBAR ── -->
+    <header
+        class="fixed top-0 left-0 right-0 z-50 h-14 bg-white border-b border-slate-200 flex items-center px-6 gap-3">
+        <div class="flex items-center gap-2">
+            <div class="w-7 h-7 rounded-lg bg-brand-600 flex items-center justify-center">
+                <i data-lucide="mic" class="w-4 h-4 text-white"></i>
+            </div>
+            <span class="font-semibold text-slate-900 text-sm tracking-tight">语音转写控制台</span>
+        </div>
+
+        <!-- Engine Switcher -->
+        <div class="flex items-center gap-1 ml-3 bg-slate-100 rounded-lg p-0.5">
+            <button id="engineBtnWhisper" class="engine-btn active-whisper" onclick="switchEngine('whisper')">
+                <i data-lucide="zap" class="w-3 h-3"></i> Whisper
+            </button>
+            <button id="engineBtnSV" class="engine-btn" onclick="switchEngine('sensevoice')">
+                <i data-lucide="sparkles" class="w-3 h-3"></i> SenseVoice
+            </button>
+        </div>
+
+        <div class="flex-1"></div>
+        <!-- Status Badge -->
+        <div id="statusBadge" class="flex items-center gap-2 text-xs font-medium text-slate-400">
+            <span class="relative flex h-2 w-2">
+                <span id="dotRing"
+                    class="hidden absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75 pulse-dot"></span>
+                <span id="dot" class="relative inline-flex rounded-full h-2 w-2 bg-slate-300"></span>
+            </span>
+            <span id="statusText">就绪</span>
+        </div>
+        <div class="w-px h-5 bg-slate-200 mx-3"></div>
+        <button onclick="copyResult()"
+            class="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-brand-600 hover:bg-brand-50 px-3 py-1.5 rounded-lg transition-colors">
+            <i data-lucide="copy" class="w-3.5 h-3.5"></i> 复制
+        </button>
+        <button onclick="clearResult()"
+            class="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg transition-colors">
+            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> 清空
+        </button>
+        <!-- Download Button (hidden until done) -->
+        <a id="downloadBtn" href="#"
+            class="hidden items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-3 py-1.5 rounded-lg transition-colors animate-fade-in">
+            <i data-lucide="download" class="w-3.5 h-3.5"></i> 下载结果
+        </a>
+    </header>
+
+    <!-- ── MAIN LAYOUT ── -->
+    <div class="flex h-full pt-14">
+
+        <!-- ── LEFT SIDEBAR ── -->
+        <aside
+            class="fixed top-14 bottom-0 left-0 w-80 bg-white border-r border-slate-200 flex flex-col overflow-y-auto">
+            <div class="p-5 flex-1">
+
+                <!-- File Upload -->
+                <div class="mb-5">
+                    <label
+                        class="block text-[11px] font-semibold uppercase tracking-widest text-slate-400 mb-2">音频文件</label>
+                    <label for="audio_file"
+                        class="group flex flex-col items-center justify-center gap-2 border-2 border-dashed border-slate-200 hover:border-brand-400 hover:bg-brand-50 rounded-xl p-5 cursor-pointer transition-colors">
+                        <i data-lucide="upload-cloud"
+                            class="w-7 h-7 text-slate-300 group-hover:text-brand-500 transition-colors"></i>
+                        <span id="fileLabel"
+                            class="text-xs text-slate-400 group-hover:text-brand-600 transition-colors">点击选择音频文件</span>
+                        <span class="text-[10.5px] text-slate-300">MP3 · WAV · M4A · MP4 · AAC · FLAC</span>
+                    </label>
+                    <input id="audio_file" type="file" accept=".mp3,.wav,.m4a,.mp4,.aac,.flac,.ogg,.webm" class="hidden"
+                        onchange="onFileChange(this)" />
+                </div>
+
+                <!-- ══ WHISPER PARAMS PANEL ══ -->
+                <div id="panelWhisper">
+                    <!-- Model Section -->
+                    <div class="mb-5">
+                        <label
+                            class="block text-[11px] font-semibold uppercase tracking-widest text-slate-400 mb-3">模型与计算</label>
+                        <div class="space-y-3">
+
+                            <div>
+                                <label class="flex items-center gap-1 text-[12.5px] font-medium text-slate-600 mb-1.5">
+                                    模型
+                                    <span class="cursor-help text-slate-300 hover:text-slate-400" data-tip="模型越大精度越高，但速度越慢、内存越多。
+• small — 快速，适合尝试
+• medium — 推荐，平衡速度与精度
+• large-v3 — 最高精度
+• tiny/base — 极快但误字多">ⓘ</span>
+                                </label>
+                                <select id="model_size" class="form-control">
+                                    <option value="small">small</option>
+                                    <option value="medium" selected>medium</option>
+                                    <option value="large-v3">large-v3</option>
+                                    <option value="large-v2">large-v2</option>
+                                    <option value="base">base</option>
+                                    <option value="tiny">tiny</option>
+                                </select>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="flex items-center gap-1 text-[12.5px] font-medium text-slate-600 mb-1.5">
+                                        compute_type
+                                        <span class="cursor-help text-slate-300 hover:text-slate-400" data-tip="推理精度格式。
+• int8 — 推荐，最快
+• float16 — GPU 优选
+• float32 — 精度最高">ⓘ</span>
+                                    </label>
+                                    <select id="compute_type" class="form-control">
+                                        <option value="int8" selected>int8</option>
+                                        <option value="float16">float16</option>
+                                        <option value="float32">float32</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="flex items-center gap-1 text-[12.5px] font-medium text-slate-600 mb-1.5">
+                                        device
+                                        <span class="cursor-help text-slate-300 hover:text-slate-400" data-tip="计算设备。
+• cpu — 通用，无 GPU 时用
+• auto — 自动选择加速器">ⓘ</span>
+                                    </label>
+                                    <select id="device" class="form-control">
+                                        <option value="cpu" selected>cpu</option>
+                                        <option value="auto">auto</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="flex items-center gap-1 text-[12.5px] font-medium text-slate-600 mb-1.5">
+                                        cpu_threads
+                                        <span class="cursor-help text-slate-300 hover:text-slate-400"
+                                            data-tip="CPU 线程数，建议为物理核心数的 50%–75%。过高会导致系统卡顿。">ⓘ</span>
+                                    </label>
+                                    <input id="cpu_threads" type="number" value="8" min="1" max="32" class="form-control" />
+                                </div>
+                                <div>
+                                    <label class="flex items-center gap-1 text-[12.5px] font-medium text-slate-600 mb-1.5">
+                                        num_workers
+                                        <span class="cursor-help text-slate-300 hover:text-slate-400"
+                                            data-tip="并行进程数。单文件保持 1，批量处理可适当调高。">ⓘ</span>
+                                    </label>
+                                    <input id="num_workers" type="number" value="1" min="1" max="8" class="form-control" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Inference Section -->
+                    <div class="mb-5">
+                        <label
+                            class="block text-[11px] font-semibold uppercase tracking-widest text-slate-400 mb-3">推理参数</label>
+                        <div class="space-y-3">
+
+                            <div>
+                                <label class="flex items-center gap-1 text-[12.5px] font-medium text-slate-600 mb-1.5">
+                                    语言
+                                    <span class="cursor-help text-slate-300 hover:text-slate-400" data-tip="语言代码，明确指定可提高准确度。
+• zh — 中文（推荐）
+• en — 英文
+• 留空 — 自动检测（稍慢）">ⓘ</span>
+                                </label>
+                                <input id="language" type="text" value="zh" class="form-control" />
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="flex items-center gap-1 text-[12.5px] font-medium text-slate-600 mb-1.5">
+                                        beam_size
+                                        <span class="cursor-help text-slate-300 hover:text-slate-400"
+                                            data-tip="束搜索宽度，越大精度越高但越慢。推荐值：5（快速场景用 1–2）。">ⓘ</span>
+                                    </label>
+                                    <input id="beam_size" type="number" value="5" min="1" max="20" class="form-control" />
+                                </div>
+                                <div>
+                                    <label class="flex items-center gap-1 text-[12.5px] font-medium text-slate-600 mb-1.5">
+                                        best_of
+                                        <span class="cursor-help text-slate-300 hover:text-slate-400"
+                                            data-tip="候选采样数，仅 temperature>0 时生效。推荐值：5。">ⓘ</span>
+                                    </label>
+                                    <input id="best_of" type="number" value="5" min="1" max="20" class="form-control" />
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="flex items-center gap-1 text-[12.5px] font-medium text-slate-600 mb-1.5">
+                                        temperature
+                                        <span class="cursor-help text-slate-300 hover:text-slate-400"
+                                            data-tip="采样温度。0 = 确定性解码（推荐），>0 增加随机性，配合 best_of 使用。">ⓘ</span>
+                                    </label>
+                                    <input id="temperature" type="number" value="0" min="0" max="1" step="0.1"
+                                        class="form-control" />
+                                </div>
+                                <div>
+                                    <label class="flex items-center gap-1 text-[12.5px] font-medium text-slate-600 mb-1.5">
+                                        chunk_length
+                                        <span class="cursor-help text-slate-300 hover:text-slate-400"
+                                            data-tip="音频切片长度（秒），留空自动处理。超长录音可填 30，过小会截断句子。">ⓘ</span>
+                                    </label>
+                                    <input id="chunk_length" type="number" placeholder="留空自动" min="1" max="1200"
+                                        class="form-control" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- VAD Section -->
+                    <div class="mb-5">
+                        <label class="block text-[11px] font-semibold uppercase tracking-widest text-slate-400 mb-3">VAD
+                            设置</label>
+                        <div class="space-y-3">
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="flex items-center gap-1 text-[12.5px] font-medium text-slate-600 mb-1.5">
+                                        幻觉阈值（秒）
+                                        <span class="cursor-help text-slate-300 hover:text-slate-400"
+                                            data-tip="静音超过此秒数时抑制幻觉输出。推荐值：2。">ⓘ</span>
+                                    </label>
+                                    <input id="hallucination_silence_threshold" type="number" value="2" min="0" max="20"
+                                        step="0.1" class="form-control" />
+                                </div>
+                                <div>
+                                    <label class="flex items-center gap-1 text-[12.5px] font-medium text-slate-600 mb-1.5">
+                                        min_silence_ms
+                                        <span class="cursor-help text-slate-300 hover:text-slate-400" data-tip="VAD 判断静音的最短时长（ms）。
+• 500 — 推荐
+• 过小 → 把长句拆碎
+• 过大 → 多句合并">ⓘ</span>
+                                    </label>
+                                    <input id="min_silence_duration_ms" type="number" value="1000" min="0" max="5000"
+                                        step="100" class="form-control" />
+                                </div>
+                            </div>
+
+                            <!-- Toggles -->
+                            <div class="space-y-2.5 pt-1">
+                                <label class="flex items-center justify-between cursor-pointer">
+                                    <span class="flex items-center gap-1.5 text-[12.5px] font-medium text-slate-600">
+                                        <i data-lucide="activity" class="w-3.5 h-3.5 text-slate-400"></i>
+                                        启用 VAD 过滤
+                                    </span>
+                                    <div class="relative">
+                                        <input id="vad_filter" type="checkbox" checked class="sr-only peer" />
+                                        <div
+                                            class="w-9 h-5 bg-slate-200 peer-checked:bg-brand-500 rounded-full transition-colors peer-focus:ring-2 peer-focus:ring-brand-300">
+                                        </div>
+                                        <div
+                                            class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform peer-checked:translate-x-4">
+                                        </div>
+                                    </div>
+                                </label>
+                                <label class="flex items-center justify-between cursor-pointer">
+                                    <span class="flex items-center gap-1.5 text-[12.5px] font-medium text-slate-600">
+                                        <i data-lucide="clock" class="w-3.5 h-3.5 text-slate-400"></i>
+                                        输出时间戳
+                                    </span>
+                                    <div class="relative">
+                                        <input id="word_timestamps" type="checkbox" checked class="sr-only peer" />
+                                        <div
+                                            class="w-9 h-5 bg-slate-200 peer-checked:bg-brand-500 rounded-full transition-colors peer-focus:ring-2 peer-focus:ring-brand-300">
+                                        </div>
+                                        <div
+                                            class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform peer-checked:translate-x-4">
+                                        </div>
+                                    </div>
+                                </label>
+                                <label class="flex items-center justify-between cursor-pointer">
+                                    <span class="flex items-center gap-1.5 text-[12.5px] font-medium text-slate-600">
+                                        <i data-lucide="link-2" class="w-3.5 h-3.5 text-slate-400"></i>
+                                        继承前文上下文
+                                    </span>
+                                    <div class="relative">
+                                        <input id="condition_on_previous_text" type="checkbox" class="sr-only peer" />
+                                        <div
+                                            class="w-9 h-5 bg-slate-200 peer-checked:bg-brand-500 rounded-full transition-colors peer-focus:ring-2 peer-focus:ring-brand-300">
+                                        </div>
+                                        <div
+                                            class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform peer-checked:translate-x-4">
+                                        </div>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Prompts -->
+                    <div class="mb-6">
+                        <label
+                            class="block text-[11px] font-semibold uppercase tracking-widest text-slate-400 mb-3">提示词</label>
+                        <div class="space-y-3">
+                            <div>
+                                <label class="block text-[12.5px] font-medium text-slate-600 mb-1.5">initial_prompt</label>
+                                <textarea id="initial_prompt" class="form-control text-[12px]"
+                                    style="min-height:64px;">这是一段中文电话通话录音，内容涉及客服、宽带、网络异常、测速、工单、处理结果，请尽量准确识别中文术语。</textarea>
+                            </div>
+                            <div>
+                                <label class="block text-[12.5px] font-medium text-slate-600 mb-1.5">热词（逗号分隔）</label>
+                                <textarea id="hotwords" class="form-control text-[12px]"
+                                    style="min-height:52px;">宽带,网络,测速,工单,客服,处理结果,异常,故障,公网,丢包,重传</textarea>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- END WHISPER PANEL -->
+
+                <!-- ══ SENSEVOICE PARAMS PANEL ══ -->
+                <div id="panelSV" class="hidden">
+                    <div class="mb-4 p-3 rounded-xl bg-sv-50 border border-sv-100">
+                        <div class="flex items-center gap-2 mb-1">
+                            <i data-lucide="sparkles" class="w-3.5 h-3.5 text-sv-500"></i>
+                            <span class="text-[12px] font-semibold text-sv-700">SenseVoice Small</span>
+                        </div>
+                        <p class="text-[11px] text-sv-600 leading-relaxed">非自回归端到端模型，比 Whisper-Large 快 15 倍，内置 VAD、情感识别与音频事件检测。首次运行将自动下载约 500 MB 模型。</p>
+                    </div>
+
+                    <div class="mb-5">
+                        <label
+                            class="block text-[11px] font-semibold uppercase tracking-widest text-slate-400 mb-3">转写参数</label>
+                        <div class="space-y-3">
+
+                            <div>
+                                <label class="flex items-center gap-1 text-[12.5px] font-medium text-slate-600 mb-1.5">
+                                    语言
+                                    <span class="cursor-help text-slate-300 hover:text-slate-400" data-tip="语言代码。
+• auto — 自动检测（推荐）
+• zh — 中文
+• en — 英文
+• ja — 日语
+• ko — 韩语
+• yue — 粤语">ⓘ</span>
+                                </label>
+                                <select id="sv_language" class="form-control">
+                                    <option value="auto" selected>auto（自动检测）</option>
+                                    <option value="zh">zh — 中文</option>
+                                    <option value="en">en — 英文</option>
+                                    <option value="ja">ja — 日语</option>
+                                    <option value="ko">ko — 韩语</option>
+                                    <option value="yue">yue — 粤语</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="flex items-center gap-1 text-[12.5px] font-medium text-slate-600 mb-1.5">
+                                    device
+                                    <span class="cursor-help text-slate-300 hover:text-slate-400" data-tip="计算设备。
+• cpu — 通用
+• cuda:0 — NVIDIA GPU">ⓘ</span>
+                                </label>
+                                <select id="sv_device" class="form-control">
+                                    <option value="cpu" selected>cpu</option>
+                                    <option value="cuda:0">cuda:0</option>
+                                </select>
+                            </div>
+
+                            <!-- Toggles -->
+                            <div class="space-y-2.5 pt-1">
+                                <label class="flex items-center justify-between cursor-pointer">
+                                    <span class="flex items-center gap-1.5 text-[12.5px] font-medium text-slate-600">
+                                        <i data-lucide="type" class="w-3.5 h-3.5 text-slate-400"></i>
+                                        输出标点与反归一化
+                                        <span class="cursor-help text-slate-300 hover:text-slate-400"
+                                            data-tip="ITN：将数字、单位等转为书面形式，并添加标点符号。">ⓘ</span>
+                                    </span>
+                                    <div class="relative">
+                                        <input id="sv_use_itn" type="checkbox" checked class="sr-only peer" />
+                                        <div
+                                            class="w-9 h-5 bg-slate-200 peer-checked:bg-sv-500 rounded-full transition-colors peer-focus:ring-2 peer-focus:ring-sv-100">
+                                        </div>
+                                        <div
+                                            class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform peer-checked:translate-x-4">
+                                        </div>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- END SENSEVOICE PANEL -->
+
+            </div>
+
+            <!-- Sidebar Footer Actions -->
+            <div class="sticky bottom-0 bg-white border-t border-slate-100 p-4 space-y-2">
+                <button onclick="startTranscribe()" id="startBtn"
+                    class="w-full flex items-center justify-center gap-2 bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white text-sm font-semibold rounded-xl px-4 py-2.5 transition-colors shadow-sm shadow-brand-200 disabled:opacity-60 disabled:cursor-not-allowed">
+                    <i data-lucide="play-circle" class="w-4 h-4"></i>
+                    <span id="startBtnText">开始转写</span>
+                </button>
+                <!-- Stop button: hidden until running -->
+                <button onclick="stopTranscribe()" id="stopBtn"
+                    class="hidden w-full flex items-center justify-center gap-2 bg-red-500 hover:bg-red-600 active:bg-red-700 text-white text-sm font-semibold rounded-xl px-4 py-2.5 transition-colors">
+                    <i data-lucide="square" class="w-4 h-4"></i>
+                    停止转写
+                </button>
+                <button onclick="fillRecommended()"
+                    class="w-full flex items-center justify-center gap-2 text-slate-500 hover:text-brand-600 hover:bg-brand-50 text-xs font-medium rounded-xl px-4 py-2 transition-colors border border-slate-200 hover:border-brand-200">
+                    <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+                    填入推荐参数
+                </button>
+            </div>
+        </aside>
+
+        <!-- ── MAIN CONTENT ── -->
+        <main class="ml-80 flex-1 flex flex-col min-h-0 overflow-hidden">
+
+            <!-- Result Header -->
+            <div class="bg-white border-b border-slate-200 px-6 py-3 flex items-center gap-3">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="file-text" class="w-4 h-4 text-slate-400"></i>
+                    <span class="text-sm font-semibold text-slate-700">转写结果</span>
+                </div>
+                <div id="metaInfo" class="text-xs text-slate-400 flex-1 truncate">— 实时流式输出将显示在这里</div>
+                <!-- Language/Prob/Emotion badges (hidden until done) -->
+                <div id="infoBadge" class="hidden items-center gap-2 animate-fade-in">
+                    <span id="langBadge"
+                        class="px-2 py-0.5 bg-violet-50 text-violet-600 text-[11px] font-semibold rounded-full border border-violet-100"></span>
+                    <span id="probBadge"
+                        class="px-2 py-0.5 bg-slate-100 text-slate-500 text-[11px] rounded-full"></span>
+                    <span id="emotionBadge"
+                        class="hidden px-2 py-0.5 bg-amber-50 text-amber-600 text-[11px] font-medium rounded-full border border-amber-100"></span>
+                    <span id="eventBadge"
+                        class="hidden px-2 py-0.5 bg-teal-50 text-teal-600 text-[11px] font-medium rounded-full border border-teal-100"></span>
+                </div>
+            </div>
+
+            <!-- Result Area -->
+            <div class="flex-1 flex flex-col overflow-auto bg-slate-50 p-6">
+                <!-- Empty State -->
+                <div id="emptyState"
+                    class="flex flex-col items-center justify-center flex-1 gap-3 text-slate-300 select-none">
+                    <i data-lucide="mic-off" class="w-12 h-12 stroke-1"></i>
+                    <p class="text-sm font-medium">选择音频并点击「开始转写」</p>
+                    <p class="text-xs">结果将以流式方式实时显示</p>
+                </div>
+
+                <!-- Progress Bar (hidden until running) -->
+                <div id="progressBar" class="hidden mb-4 animate-fade-in">
+                    <div class="flex items-center justify-between mb-1.5">
+                        <span class="text-xs font-medium text-slate-500" id="progressLabel">正在转写...</span>
+                        <span class="text-xs text-slate-400" id="segCount">0 段</span>
+                    </div>
+                    <div class="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                        <div id="progressFill"
+                            class="h-full bg-gradient-to-r from-brand-500 to-violet-500 rounded-full w-0 transition-all duration-500"
+                            style="animation: indeterminate 1.5s ease-in-out infinite;">
+                        </div>
+                    </div>
+                </div>
+                <style>
+                    @keyframes indeterminate {
+                        0% {
+                            margin-left: 0%;
+                            width: 30%;
+                        }
+
+                        50% {
+                            margin-left: 40%;
+                            width: 40%;
+                        }
+
+                        100% {
+                            margin-left: 90%;
+                            width: 10%;
+                        }
+                    }
+                </style>
+
+                <!-- Textarea -->
+                <textarea id="resultBox"
+                    class="hidden flex-1 w-full p-4 bg-white rounded-xl border border-slate-200 text-slate-700 shadow-sm animate-fade-in"
+                    placeholder="转写输出会显示在这里..." readonly></textarea>
+            </div>
+
+            <!-- Status Bar -->
+            <div id="statusBar"
+                class="bg-white border-t border-slate-200 px-6 py-2 flex items-center gap-2 min-h-[36px]">
+                <span id="statusIcon" class="text-slate-300"><i data-lucide="info" class="w-3.5 h-3.5"></i></span>
+                <span id="statusMsg" class="text-xs text-slate-400">等待开始...</span>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // Init Lucide icons
+        lucide.createIcons();
+
+        // ── Engine State ──
+        let currentEngine = 'whisper'; // 'whisper' | 'sensevoice'
+
+        function switchEngine(engine) {
+            currentEngine = engine;
+            const btnW = document.getElementById('engineBtnWhisper');
+            const btnSV = document.getElementById('engineBtnSV');
+            const panelW = document.getElementById('panelWhisper');
+            const panelSV = document.getElementById('panelSV');
+
+            if (engine === 'whisper') {
+                btnW.className = 'engine-btn active-whisper';
+                btnSV.className = 'engine-btn';
+                panelW.classList.remove('hidden');
+                panelSV.classList.add('hidden');
+            } else {
+                btnW.className = 'engine-btn';
+                btnSV.className = 'engine-btn active-sv';
+                panelW.classList.add('hidden');
+                panelSV.classList.remove('hidden');
+            }
+            lucide.createIcons();
+        }
+
+        // ── Helpers ──
+        function val(id) { return document.getElementById(id).value; }
+        function checked(id) { return document.getElementById(id).checked; }
+        let segmentCount = 0;
+        let _abortController = null;
+
+        function setStatus(text, type = 'info') {
+            document.getElementById('statusText').textContent = text;
+            document.getElementById('statusMsg').textContent = text;
+            const iconMap = { info: 'info', success: 'check-circle', error: 'alert-circle', loading: 'loader' };
+            const colorMap = { info: 'text-slate-300', success: 'text-emerald-500', error: 'text-red-400', loading: 'text-brand-500' };
+            const el = document.getElementById('statusIcon');
+            el.className = colorMap[type] || 'text-slate-300';
+            el.innerHTML = `<i data-lucide="${iconMap[type] || 'info'}" class="w-3.5 h-3.5"></i>`;
+            lucide.createIcons();
+        }
+
+        function setRunning(running) {
+            const dot = document.getElementById('dot');
+            const dotRing = document.getElementById('dotRing');
+            const startBtn = document.getElementById('startBtn');
+            const stopBtn = document.getElementById('stopBtn');
+            if (running) {
+                dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-green-500';
+                dotRing.classList.remove('hidden');
+                startBtn.classList.add('hidden');
+                stopBtn.classList.remove('hidden');
+                stopBtn.classList.add('flex');
+                document.getElementById('progressBar').classList.remove('hidden');
+                document.getElementById('emptyState').classList.add('hidden');
+            } else {
+                dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-slate-300';
+                dotRing.classList.add('hidden');
+                startBtn.classList.remove('hidden');
+                stopBtn.classList.add('hidden');
+                stopBtn.classList.remove('flex');
+                document.getElementById('progressBar').classList.add('hidden');
+            }
+            lucide.createIcons();
+        }
+
+        function onFileChange(input) {
+            const label = document.getElementById('fileLabel');
+            if (input.files[0]) {
+                label.textContent = input.files[0].name;
+                label.classList.add('text-brand-600');
+            } else {
+                label.textContent = '点击选择音频文件';
+                label.classList.remove('text-brand-600');
+            }
+        }
+
+        function clearResult() {
+            document.getElementById('resultBox').value = '';
+            document.getElementById('resultBox').classList.add('hidden');
+            document.getElementById('emptyState').classList.remove('hidden');
+            document.getElementById('metaInfo').textContent = '— 实时流式输出将显示在这里';
+            document.getElementById('infoBadge').classList.add('hidden');
+            document.getElementById('emotionBadge').classList.add('hidden');
+            document.getElementById('eventBadge').classList.add('hidden');
+            document.getElementById('downloadBtn').classList.add('hidden');
+            document.getElementById('downloadBtn').classList.remove('flex');
+            segmentCount = 0;
+            setStatus('已清空结果');
+        }
+
+        async function copyResult() {
+            const text = document.getElementById('resultBox').value;
+            if (!text) { setStatus('没有可复制的内容', 'info'); return; }
+            await navigator.clipboard.writeText(text);
+            setStatus('已复制到剪贴板', 'success');
+        }
+
+        function fillRecommended() {
+            if (currentEngine === 'whisper') {
+                document.getElementById('model_size').value = 'medium';
+                document.getElementById('compute_type').value = 'int8';
+                document.getElementById('device').value = 'cpu';
+                document.getElementById('language').value = 'zh';
+                document.getElementById('cpu_threads').value = '8';
+                document.getElementById('num_workers').value = '1';
+                document.getElementById('beam_size').value = '5';
+                document.getElementById('best_of').value = '5';
+                document.getElementById('temperature').value = '0';
+                document.getElementById('chunk_length').value = '';
+                document.getElementById('hallucination_silence_threshold').value = '2';
+                document.getElementById('min_silence_duration_ms').value = '500';
+                document.getElementById('vad_filter').checked = true;
+                document.getElementById('word_timestamps').checked = true;
+                document.getElementById('condition_on_previous_text').checked = false;
+            } else {
+                document.getElementById('sv_language').value = 'auto';
+                document.getElementById('sv_device').value = 'cpu';
+                document.getElementById('sv_use_itn').checked = true;
+            }
+            setStatus('已填入推荐参数', 'success');
+        }
+
+        function stopTranscribe() {
+            if (_abortController) {
+                _abortController.abort();
+                _abortController = null;
+            }
+        }
+
+        async function startTranscribe() {
+            const fileInput = document.getElementById('audio_file');
+            const file = fileInput.files[0];
+            if (!file) { setStatus('请先选择音频文件', 'error'); return; }
+
+            const formData = new FormData();
+            formData.append('audio_file', file);
+
+            let endpoint = '/transcribe_stream';
+
+            if (currentEngine === 'sensevoice') {
+                endpoint = '/transcribe_stream_sv';
+                formData.append('sv_language', val('sv_language'));
+                formData.append('sv_device', val('sv_device'));
+                formData.append('sv_use_itn', String(checked('sv_use_itn')));
+            } else {
+                formData.append('model_size', val('model_size'));
+                formData.append('compute_type', val('compute_type'));
+                formData.append('device', val('device'));
+                formData.append('language', val('language').trim());
+                formData.append('cpu_threads', String(Number(val('cpu_threads'))));
+                formData.append('num_workers', String(Number(val('num_workers'))));
+                formData.append('beam_size', String(Number(val('beam_size'))));
+                formData.append('best_of', String(Number(val('best_of'))));
+                formData.append('temperature', String(Number(val('temperature'))));
+                formData.append('chunk_length', val('chunk_length').trim());
+                formData.append('hallucination_silence_threshold', String(Number(val('hallucination_silence_threshold'))));
+                formData.append('min_silence_duration_ms', String(Number(val('min_silence_duration_ms'))));
+                formData.append('vad_filter', String(checked('vad_filter')));
+                formData.append('word_timestamps', String(checked('word_timestamps')));
+                formData.append('condition_on_previous_text', String(checked('condition_on_previous_text')));
+                formData.append('initial_prompt', val('initial_prompt').trim());
+                formData.append('hotwords', val('hotwords').trim());
+            }
+
+            // Reset UI
+            const resultBox = document.getElementById('resultBox');
+            resultBox.value = '';
+            resultBox.classList.remove('hidden');
+            document.getElementById('emptyState').classList.add('hidden');
+            document.getElementById('infoBadge').classList.add('hidden');
+            document.getElementById('emotionBadge').classList.add('hidden');
+            document.getElementById('eventBadge').classList.add('hidden');
+            document.getElementById('downloadBtn').classList.add('hidden');
+            document.getElementById('downloadBtn').classList.remove('flex');
+            segmentCount = 0;
+            document.getElementById('segCount').textContent = '0 段';
+            document.getElementById('metaInfo').textContent = `文件: ${file.name}`;
+            const loadingMsg = currentEngine === 'sensevoice' ? '正在加载 SenseVoice 模型...' : '正在加载模型...';
+            setStatus(loadingMsg, 'loading');
+            setRunning(true);
+
+            _abortController = new AbortController();
+
+            try {
+                const resp = await fetch(endpoint, {
+                    method: 'POST',
+                    body: formData,
+                    signal: _abortController.signal,
+                });
+                if (!resp.ok || !resp.body) {
+                    throw new Error((await resp.text()) || '无法启动流式转写');
+                }
+
+                const reader = resp.body.getReader();
+                const decoder = new TextDecoder('utf-8');
+                let buffer = '';
+
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+                    const parts = buffer.split('\n');
+                    buffer = parts.pop();
+
+                    for (const line of parts) {
+                        if (!line.trim()) continue;
+                        const item = JSON.parse(line);
+
+                        if (item.type === 'start') {
+                            setStatus(item.message || '模型已加载，转写中...', 'loading');
+                            document.getElementById('progressLabel').textContent = '转写中...';
+                        } else if (item.type === 'segment') {
+                            segmentCount++;
+                            resultBox.value += item.text + '\n';
+                            resultBox.scrollTop = resultBox.scrollHeight;
+                            document.getElementById('segCount').textContent = `${segmentCount} 段`;
+                            setStatus('实时转写中...', 'loading');
+                        } else if (item.type === 'done') {
+                            const lang = item.info?.language || '';
+                            const prob = item.info?.language_probability
+                                ? (item.info.language_probability * 100).toFixed(1) + '%'
+                                : '';
+                            const emotion = item.info?.emotion || '';
+                            const event = item.info?.event || '';
+
+                            const infoBadge = document.getElementById('infoBadge');
+                            document.getElementById('langBadge').textContent = lang ? `lang: ${lang}` : '';
+                            document.getElementById('probBadge').textContent = prob ? `conf: ${prob}` : '';
+
+                            // SenseVoice emotion/event badges
+                            const emotionBadge = document.getElementById('emotionBadge');
+                            const eventBadge = document.getElementById('eventBadge');
+                            if (emotion) {
+                                emotionBadge.textContent = `😊 ${emotion}`;
+                                emotionBadge.classList.remove('hidden');
+                            }
+                            if (event) {
+                                eventBadge.textContent = `🎵 ${event}`;
+                                eventBadge.classList.remove('hidden');
+                            }
+
+                            if (lang || prob || emotion || event) {
+                                infoBadge.classList.remove('hidden');
+                                infoBadge.classList.add('flex');
+                            }
+
+                            document.getElementById('metaInfo').textContent = `文件: ${file.name} · ${segmentCount} 段`;
+                            const dlBtn = document.getElementById('downloadBtn');
+                            dlBtn.href = item.download_url;
+                            dlBtn.download = item.filename;
+                            dlBtn.classList.remove('hidden');
+                            dlBtn.classList.add('flex');
+                            setStatus(`转写完成，共 ${segmentCount} 段`, 'success');
+                            setRunning(false);
+                        } else if (item.type === 'error') {
+                            throw new Error(item.error || '转写失败');
+                        }
+                    }
+                }
+            } catch (e) {
+                if (e.name === 'AbortError') {
+                    setStatus(`已停止转写（已输出 ${segmentCount} 段）`, 'info');
+                    document.getElementById('metaInfo').textContent = `已停止 · ${segmentCount} 段`;
+                } else {
+                    setStatus('执行失败：' + e.message, 'error');
+                    document.getElementById('metaInfo').textContent = '执行失败';
+                }
+                setRunning(false);
+                _abortController = null;
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => lucide.createIcons());
+    </script>
+</body>
+
+</html>
