@@ -4,8 +4,13 @@ FROM python:3.10-slim AS builder
 WORKDIR /app
 
 # 所有依赖均有预编译 wheel，无需 build-essential
-COPY requirements.txt .
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt gunicorn
+# 使用清华 PyPI 镜像，避免国内网络问题和跨平台哈希冲突
+# requirements-docker.txt 仅含直接依赖，让 pip 在 Linux 上解析正确的 wheel
+COPY requirements-docker.txt .
+RUN --network=host pip install --no-cache-dir --prefix=/install \
+    -r requirements-docker.txt \
+    -i https://pypi.tuna.tsinghua.edu.cn/simple \
+    --trusted-host pypi.tuna.tsinghua.edu.cn
 
 
 # ── Stage: runtime ───────────────────────────────────────────
