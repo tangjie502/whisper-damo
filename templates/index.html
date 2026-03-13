@@ -617,11 +617,50 @@
                         <div class="space-y-3">
                             <div>
                                 <label class="block text-[12.5px] font-medium text-slate-600 mb-1.5">Speech Key</label>
+                                {% if azure_key_configured %}
+                                <div class="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg">
+                                    <i data-lucide="shield-check" class="w-3.5 h-3.5 text-emerald-600 flex-shrink-0"></i>
+                                    <span class="text-[12px] text-emerald-700 font-medium">Key 已通过环境变量配置</span>
+                                </div>
+                                {% else %}
                                 <input id="az_speech_key" type="password" placeholder="输入 Azure Speech Key" class="form-control" />
+                                {% endif %}
                             </div>
                             <div>
                                 <label class="block text-[12.5px] font-medium text-slate-600 mb-1.5">Region</label>
-                                <input id="az_region" type="text" placeholder="例如 eastasia" class="form-control" />
+                                <select id="az_region" class="form-control">
+                                    <optgroup label="亚太">
+                                        <option value="eastasia">eastasia（东亚 · 香港）</option>
+                                        <option value="southeastasia">southeastasia（东南亚 · 新加坡）</option>
+                                        <option value="japaneast">japaneast（日本东部）</option>
+                                        <option value="japanwest">japanwest（日本西部）</option>
+                                        <option value="koreacentral">koreacentral（韩国中部）</option>
+                                        <option value="australiaeast">australiaeast（澳大利亚东部）</option>
+                                    </optgroup>
+                                    <optgroup label="中国（世纪互联）">
+                                        <option value="chinaeast2">chinaeast2（中国东部 2）</option>
+                                        <option value="chinanorth3">chinanorth3（中国北部 3）</option>
+                                    </optgroup>
+                                    <optgroup label="美洲">
+                                        <option value="eastus">eastus（美国东部）</option>
+                                        <option value="eastus2">eastus2（美国东部 2）</option>
+                                        <option value="westus">westus（美国西部）</option>
+                                        <option value="westus2">westus2（美国西部 2）</option>
+                                        <option value="centralus">centralus（美国中部）</option>
+                                    </optgroup>
+                                    <optgroup label="欧洲">
+                                        <option value="northeurope">northeurope（北欧 · 爱尔兰）</option>
+                                        <option value="westeurope">westeurope（西欧 · 荷兰）</option>
+                                        <option value="uksouth">uksouth（英国南部）</option>
+                                        <option value="francecentral">francecentral（法国中部）</option>
+                                        <option value="germanywestcentral">germanywestcentral（德国西中部）</option>
+                                        <option value="swedencentral">swedencentral（瑞典中部）</option>
+                                    </optgroup>
+                                    <optgroup label="印度 / 中东 / 非洲">
+                                        <option value="centralindia">centralindia（印度中部）</option>
+                                        <option value="uaenorth">uaenorth（阿联酋北部）</option>
+                                    </optgroup>
+                                </select>
                             </div>
                         </div>
                     </div>
@@ -1110,14 +1149,15 @@
             }
         }
 
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
             lucide.createIcons();
             // Restore Azure credentials from localStorage
             const storedKey = localStorage.getItem('az_speech_key');
             const storedRegion = localStorage.getItem('az_region');
             const storedLocale = localStorage.getItem('az_locale');
             const storedPhrases = localStorage.getItem('az_phrases');
-            if (storedKey) document.getElementById('az_speech_key').value = storedKey;
+            const keyInput = document.getElementById('az_speech_key');
+            if (keyInput && storedKey) keyInput.value = storedKey;
             if (storedRegion) document.getElementById('az_region').value = storedRegion;
             if (storedLocale) document.getElementById('az_locale').value = storedLocale;
             if (storedPhrases) document.getElementById('az_phrases').value = storedPhrases;
@@ -1274,12 +1314,24 @@
 
         async function startAzureTranscription() {
             const file = document.getElementById('audio_file').files[0];
-            const key = document.getElementById('az_speech_key').value.trim();
-            const region = document.getElementById('az_region').value.trim();
+            // 获取 Speech Key：优先使用环境变量（服务器端），其次使用输入框
+            let key = '';
+            const keyInput = document.getElementById('az_speech_key');
+            if (keyInput) {
+                key = keyInput.value.trim();
+            } else {
+                // 环境变量模式：从后端 API 获取
+                try {
+                    const resp = await fetch('/api/azure-key');
+                    const data = await resp.json();
+                    key = data.key || '';
+                } catch (_) {}
+            }
+            const region = document.getElementById('az_region').value;
             if (!key || !region) { setStatus('请填写 Azure Speech Key 和 Region', 'error'); return; }
 
             // Persist to localStorage
-            localStorage.setItem('az_speech_key', key);
+            if (keyInput) localStorage.setItem('az_speech_key', key);
             localStorage.setItem('az_region', region);
             localStorage.setItem('az_locale', document.getElementById('az_locale').value);
             localStorage.setItem('az_phrases', document.getElementById('az_phrases').value);

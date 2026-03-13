@@ -144,7 +144,19 @@ def save_upload(uploaded) -> Path:
 
 @app.route("/", methods=["GET"])
 def index():
-    return render_template("index.html")
+    import os
+    azure_key_configured = bool(os.environ.get("AZURE_SPEECH_KEY", "").strip())
+    return render_template("index.html", azure_key_configured=azure_key_configured)
+
+
+@app.route("/api/azure-key", methods=["GET"])
+def azure_key():
+    """返回服务器配置的 Azure Speech Key（仅在设置了环境变量时可用）。"""
+    import os
+    key = os.environ.get("AZURE_SPEECH_KEY", "").strip()
+    if not key:
+        return {"key": ""}, 200
+    return {"key": key}, 200
 
 
 @app.route("/download/<filename>", methods=["GET"])
