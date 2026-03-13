@@ -3,16 +3,7 @@ FROM python:3.10-slim AS builder
 
 WORKDIR /app
 
-# 换用阿里云 apt 镜像（国内服务器必须）
-RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
-    sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list
-
-# 安装构建依赖
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    git \
-    && rm -rf /var/lib/apt/lists/*
-
+# 所有依赖均有预编译 wheel，无需 build-essential
 COPY requirements.txt .
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt gunicorn
 
@@ -25,10 +16,8 @@ LABEL description="Speech transcription server: Whisper / SenseVoice / Azure"
 
 WORKDIR /app
 
-# 运行时系统依赖：ffmpeg (音频解码) + libsndfile (librosa)
-RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
-    sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list && \
-    apt-get update && apt-get install -y --no-install-recommends \
+# 运行时系统依赖：使用 host 网络确保 apt 可访问（绕过 Docker DNS 问题）
+RUN --network=host apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libsndfile1 \
     && rm -rf /var/lib/apt/lists/*

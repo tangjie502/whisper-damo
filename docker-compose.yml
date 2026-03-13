@@ -2,7 +2,9 @@ version: '3.9'
 
 services:
   whisper-damo:
-    build: .
+    build:
+      context: .
+      network: host   # 构建时使用宿主机网络，解决 Docker DNS 异常问题
     image: whisper-damo:latest
     container_name: whisper-damo
     ports:
