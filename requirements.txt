@@ -9,7 +9,8 @@ blinker==1.9.0
 certifi==2026.2.25
 cffi==2.0.0
 charset-normalizer==3.4.5
-click==8.1.8
+click==8.1.8; python_version < "3.10"
+click>=8.2.1; python_version >= "3.10"
 coloredlogs==15.0.1
 crcmod==1.7
 cryptography==46.0.5

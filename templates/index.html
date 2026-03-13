@@ -11,6 +11,7 @@
         rel="stylesheet" />
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/microsoft-cognitiveservices-speech-sdk/distrib/browser/microsoft.cognitiveservices.speech.sdk.bundle-min.js"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -188,10 +189,15 @@
             color: #9333ea;
             border-color: #e9d5ff;
         }
-        .engine-btn:not(.active-whisper):not(.active-sv) {
+        .engine-btn.active-azure {
+            background: #f0f9ff;
+            color: #0284c7;
+            border-color: #bae6fd;
+        }
+        .engine-btn:not(.active-whisper):not(.active-sv):not(.active-azure) {
             color: #94a3b8;
         }
-        .engine-btn:not(.active-whisper):not(.active-sv):hover {
+        .engine-btn:not(.active-whisper):not(.active-sv):not(.active-azure):hover {
             color: #475569;
             background: #f1f5f9;
         }
@@ -202,56 +208,73 @@
 
     <!-- ── NAVBAR ── -->
     <header
-        class="fixed top-0 left-0 right-0 z-50 h-14 bg-white border-b border-slate-200 flex items-center px-6 gap-3">
+        class="fixed top-0 left-0 right-0 z-50 h-14 bg-white border-b border-slate-200 flex items-center px-4 gap-2 md:px-6 md:gap-3">
+
+        <!-- Hamburger (mobile only) -->
+        <button id="sidebarToggle"
+            class="md:hidden flex items-center justify-center w-8 h-8 rounded-lg hover:bg-slate-100 transition-colors flex-shrink-0"
+            onclick="toggleSidebar()">
+            <i data-lucide="menu" class="w-4 h-4 text-slate-600"></i>
+        </button>
+
         <div class="flex items-center gap-2">
-            <div class="w-7 h-7 rounded-lg bg-brand-600 flex items-center justify-center">
+            <div class="w-7 h-7 rounded-lg bg-brand-600 flex items-center justify-center flex-shrink-0">
                 <i data-lucide="mic" class="w-4 h-4 text-white"></i>
             </div>
-            <span class="font-semibold text-slate-900 text-sm tracking-tight">语音转写控制台</span>
+            <span class="hidden sm:block font-semibold text-slate-900 text-sm tracking-tight">语音转写控制台</span>
         </div>
 
         <!-- Engine Switcher -->
-        <div class="flex items-center gap-1 ml-3 bg-slate-100 rounded-lg p-0.5">
+        <div class="flex items-center gap-0.5 ml-1 md:ml-3 bg-slate-100 rounded-lg p-0.5 flex-shrink-0">
             <button id="engineBtnWhisper" class="engine-btn active-whisper" onclick="switchEngine('whisper')">
-                <i data-lucide="zap" class="w-3 h-3"></i> Whisper
+                <i data-lucide="zap" class="w-3 h-3"></i> <span class="hidden sm:inline">Whisper</span>
             </button>
             <button id="engineBtnSV" class="engine-btn" onclick="switchEngine('sensevoice')">
-                <i data-lucide="sparkles" class="w-3 h-3"></i> SenseVoice
+                <i data-lucide="sparkles" class="w-3 h-3"></i> <span class="hidden sm:inline">SenseVoice</span>
+            </button>
+            <button id="engineBtnAzure" class="engine-btn" onclick="switchEngine('azure')">
+                <i data-lucide="cloud" class="w-3 h-3"></i> <span class="hidden sm:inline">Azure</span>
             </button>
         </div>
 
         <div class="flex-1"></div>
         <!-- Status Badge -->
-        <div id="statusBadge" class="flex items-center gap-2 text-xs font-medium text-slate-400">
+        <div id="statusBadge" class="flex items-center gap-1.5 text-xs font-medium text-slate-400">
             <span class="relative flex h-2 w-2">
                 <span id="dotRing"
                     class="hidden absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75 pulse-dot"></span>
                 <span id="dot" class="relative inline-flex rounded-full h-2 w-2 bg-slate-300"></span>
             </span>
-            <span id="statusText">就绪</span>
+            <span id="statusText" class="hidden sm:block">就绪</span>
         </div>
-        <div class="w-px h-5 bg-slate-200 mx-3"></div>
+        <div class="w-px h-5 bg-slate-200 mx-1 md:mx-3"></div>
         <button onclick="copyResult()"
-            class="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-brand-600 hover:bg-brand-50 px-3 py-1.5 rounded-lg transition-colors">
-            <i data-lucide="copy" class="w-3.5 h-3.5"></i> 复制
+            class="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-brand-600 hover:bg-brand-50 px-2 py-1.5 md:px-3 rounded-lg transition-colors">
+            <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+            <span class="hidden md:inline">复制</span>
         </button>
         <button onclick="clearResult()"
-            class="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg transition-colors">
-            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> 清空
+            class="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-red-500 hover:bg-red-50 px-2 py-1.5 md:px-3 rounded-lg transition-colors">
+            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+            <span class="hidden md:inline">清空</span>
         </button>
         <!-- Download Button (hidden until done) -->
         <a id="downloadBtn" href="#"
-            class="hidden items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-3 py-1.5 rounded-lg transition-colors animate-fade-in">
-            <i data-lucide="download" class="w-3.5 h-3.5"></i> 下载结果
+            class="hidden items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2 py-1.5 md:px-3 rounded-lg transition-colors animate-fade-in">
+            <i data-lucide="download" class="w-3.5 h-3.5"></i>
+            <span class="hidden md:inline">下载结果</span>
         </a>
     </header>
+
+    <!-- Mobile Sidebar Overlay -->
+    <div id="sidebarOverlay" class="hidden fixed inset-0 bg-black/40 z-30 md:hidden" onclick="toggleSidebar()"></div>
 
     <!-- ── MAIN LAYOUT ── -->
     <div class="flex h-full pt-14">
 
         <!-- ── LEFT SIDEBAR ── -->
-        <aside
-            class="fixed top-14 bottom-0 left-0 w-80 bg-white border-r border-slate-200 flex flex-col overflow-y-auto">
+        <aside id="sidebar"
+            class="fixed top-14 bottom-0 left-0 w-80 bg-white border-r border-slate-200 flex flex-col overflow-y-auto z-40 transition-transform duration-300 -translate-x-full md:translate-x-0">
             <div class="p-5 flex-1">
 
                 <!-- File Upload -->
@@ -579,6 +602,62 @@
                 </div>
                 <!-- END SENSEVOICE PANEL -->
 
+                <!-- ══ AZURE SPEECH PARAMS PANEL ══ -->
+                <div id="panelAzure" class="hidden">
+                    <div class="mb-4 p-3 rounded-xl bg-sky-50 border border-sky-100">
+                        <div class="flex items-center gap-2 mb-1">
+                            <i data-lucide="cloud" class="w-3.5 h-3.5 text-sky-500"></i>
+                            <span class="text-[12px] font-semibold text-sky-700">Azure Speech Service</span>
+                        </div>
+                        <p class="text-[11px] text-sky-600 leading-relaxed">纯前端调用 Azure Speech SDK，音频在浏览器中直接发往 Azure，无需上传到本服务器。凭证仅存于本地，不适合公开部署。</p>
+                    </div>
+
+                    <div class="mb-5">
+                        <label class="block text-[11px] font-semibold uppercase tracking-widest text-slate-400 mb-3">Azure 连接</label>
+                        <div class="space-y-3">
+                            <div>
+                                <label class="block text-[12.5px] font-medium text-slate-600 mb-1.5">Speech Key</label>
+                                <input id="az_speech_key" type="password" placeholder="输入 Azure Speech Key" class="form-control" />
+                            </div>
+                            <div>
+                                <label class="block text-[12.5px] font-medium text-slate-600 mb-1.5">Region</label>
+                                <input id="az_region" type="text" placeholder="例如 eastasia" class="form-control" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-5">
+                        <label class="block text-[11px] font-semibold uppercase tracking-widest text-slate-400 mb-3">转写参数</label>
+                        <div class="space-y-3">
+                            <div>
+                                <label class="flex items-center gap-1 text-[12.5px] font-medium text-slate-600 mb-1.5">识别语言</label>
+                                <select id="az_locale" class="form-control">
+                                    <option value="zh-CN" selected>zh-CN 中文普通话</option>
+                                    <option value="en-US">en-US 英文</option>
+                                    <option value="zh-HK">zh-HK 粤语</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="flex items-center gap-1 text-[12.5px] font-medium text-slate-600 mb-1.5">
+                                    处理模式
+                                    <span class="cursor-help text-slate-300 hover:text-slate-400" data-tip="稳态：单路顺序处理，稳定可靠。&#10;双路加速：最多 2 路并行，缩短耗时但多消耗 API 额度。">ⓘ</span>
+                                </label>
+                                <select id="az_speed_mode" class="form-control">
+                                    <option value="realtime" selected>稳态模式</option>
+                                    <option value="fast">双路加速</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-5">
+                        <label class="block text-[11px] font-semibold uppercase tracking-widest text-slate-400 mb-2">短语增强</label>
+                        <textarea id="az_phrases" class="form-control text-[12px]" style="min-height:72px;">宽带,网络,测速,工单,客服,处理结果,异常,故障,公网,丢包,重传,师傅上门,端口,光猫,掉线</textarea>
+                        <p class="text-[11px] text-slate-400 mt-1.5 leading-relaxed">逗号或换行分隔，提升专业词汇识别准确率。</p>
+                    </div>
+                </div>
+                <!-- END AZURE PANEL -->
+
             </div>
 
             <!-- Sidebar Footer Actions -->
@@ -603,7 +682,7 @@
         </aside>
 
         <!-- ── MAIN CONTENT ── -->
-        <main class="ml-80 flex-1 flex flex-col min-h-0 overflow-hidden">
+        <main class="md:ml-80 flex-1 flex flex-col min-h-0 overflow-hidden w-full">
 
             <!-- Result Header -->
             <div class="bg-white border-b border-slate-200 px-6 py-3 flex items-center gap-3">
@@ -671,7 +750,30 @@
                 <textarea id="resultBox"
                     class="hidden flex-1 w-full p-4 bg-white rounded-xl border border-slate-200 text-slate-700 shadow-sm animate-fade-in"
                     placeholder="转写输出会显示在这里..." readonly></textarea>
-            </div>
+
+                <!-- Detail Info Grid (shown after Azure transcription) -->
+                <div id="detailGrid" class="hidden mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 animate-fade-in">
+                    <div class="bg-white rounded-xl border border-slate-200 px-4 py-3">
+                        <div class="text-[10.5px] font-semibold uppercase tracking-widest text-slate-400 mb-1">文件信息</div>
+                        <div id="dg_file" class="text-[12.5px] font-medium text-slate-700">—</div>
+                    </div>
+                    <div class="bg-white rounded-xl border border-slate-200 px-4 py-3">
+                        <div class="text-[10.5px] font-semibold uppercase tracking-widest text-slate-400 mb-1">音频解码</div>
+                        <div id="dg_decode" class="text-[12.5px] font-medium text-slate-700">—</div>
+                    </div>
+                    <div class="bg-white rounded-xl border border-slate-200 px-4 py-3">
+                        <div class="text-[10.5px] font-semibold uppercase tracking-widest text-slate-400 mb-1">音频时长</div>
+                        <div id="dg_duration" class="text-[12.5px] font-medium text-slate-700">00:00</div>
+                    </div>
+                    <div class="bg-white rounded-xl border border-slate-200 px-4 py-3">
+                        <div class="text-[10.5px] font-semibold uppercase tracking-widest text-slate-400 mb-1">识别段数</div>
+                        <div id="dg_segments" class="text-[12.5px] font-medium text-slate-700">0 段</div>
+                    </div>
+                    <div class="bg-white rounded-xl border border-slate-200 px-4 py-3 col-span-2">
+                        <div class="text-[10.5px] font-semibold uppercase tracking-widest text-slate-400 mb-1">并行状态</div>
+                        <div id="dg_parallel" class="text-[12.5px] font-medium text-slate-700">等待切片...</div>
+                    </div>
+                </div>
 
             <!-- Status Bar -->
             <div id="statusBar"
@@ -686,6 +788,29 @@
         // Init Lucide icons
         lucide.createIcons();
 
+        // ── Mobile Sidebar Toggle ──
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            const isOpen = !sidebar.classList.contains('-translate-x-full');
+            if (isOpen) {
+                sidebar.classList.add('-translate-x-full');
+                overlay.classList.add('hidden');
+            } else {
+                sidebar.classList.remove('-translate-x-full');
+                overlay.classList.remove('hidden');
+            }
+        }
+
+        function closeSidebarOnMobile() {
+            if (window.innerWidth < 768) {
+                const sidebar = document.getElementById('sidebar');
+                const overlay = document.getElementById('sidebarOverlay');
+                sidebar.classList.add('-translate-x-full');
+                overlay.classList.add('hidden');
+            }
+        }
+
         // ── Engine State ──
         let currentEngine = 'whisper'; // 'whisper' | 'sensevoice'
 
@@ -693,19 +818,27 @@
             currentEngine = engine;
             const btnW = document.getElementById('engineBtnWhisper');
             const btnSV = document.getElementById('engineBtnSV');
+            const btnAZ = document.getElementById('engineBtnAzure');
             const panelW = document.getElementById('panelWhisper');
             const panelSV = document.getElementById('panelSV');
+            const panelAZ = document.getElementById('panelAzure');
+
+            btnW.className = 'engine-btn';
+            btnSV.className = 'engine-btn';
+            btnAZ.className = 'engine-btn';
+            panelW.classList.add('hidden');
+            panelSV.classList.add('hidden');
+            panelAZ.classList.add('hidden');
 
             if (engine === 'whisper') {
                 btnW.className = 'engine-btn active-whisper';
-                btnSV.className = 'engine-btn';
                 panelW.classList.remove('hidden');
-                panelSV.classList.add('hidden');
-            } else {
-                btnW.className = 'engine-btn';
+            } else if (engine === 'sensevoice') {
                 btnSV.className = 'engine-btn active-sv';
-                panelW.classList.add('hidden');
                 panelSV.classList.remove('hidden');
+            } else {
+                btnAZ.className = 'engine-btn active-azure';
+                panelAZ.classList.remove('hidden');
             }
             lucide.createIcons();
         }
@@ -740,6 +873,7 @@
                 stopBtn.classList.add('flex');
                 document.getElementById('progressBar').classList.remove('hidden');
                 document.getElementById('emptyState').classList.add('hidden');
+                closeSidebarOnMobile();
             } else {
                 dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-slate-300';
                 dotRing.classList.add('hidden');
@@ -772,6 +906,7 @@
             document.getElementById('eventBadge').classList.add('hidden');
             document.getElementById('downloadBtn').classList.add('hidden');
             document.getElementById('downloadBtn').classList.remove('flex');
+            document.getElementById('detailGrid').classList.add('hidden');
             segmentCount = 0;
             setStatus('已清空结果');
         }
@@ -800,6 +935,10 @@
                 document.getElementById('vad_filter').checked = true;
                 document.getElementById('word_timestamps').checked = true;
                 document.getElementById('condition_on_previous_text').checked = false;
+            } else if (currentEngine === 'azure') {
+                document.getElementById('az_locale').value = 'zh-CN';
+                document.getElementById('az_speed_mode').value = 'realtime';
+                document.getElementById('az_phrases').value = '宽带,网络,测速,工单,客服,处理结果,异常,故障,公网,丢包,重传,师傅上门,端口,光猫,掉线';
             } else {
                 document.getElementById('sv_language').value = 'auto';
                 document.getElementById('sv_device').value = 'cpu';
@@ -809,7 +948,13 @@
         }
 
         function stopTranscribe() {
-            if (_abortController) {
+            if (currentEngine === 'azure') {
+                _azStopRequested = true;
+                azCloseAll();
+                setRunning(false);
+                setStatus(`已停止转写（已输出 ${segmentCount} 段）`, 'info');
+                document.getElementById('metaInfo').textContent = `已停止 · ${segmentCount} 段`;
+            } else if (_abortController) {
                 _abortController.abort();
                 _abortController = null;
             }
@@ -819,6 +964,12 @@
             const fileInput = document.getElementById('audio_file');
             const file = fileInput.files[0];
             if (!file) { setStatus('请先选择音频文件', 'error'); return; }
+
+            // Azure engine: pure-frontend, no backend request
+            if (currentEngine === 'azure') {
+                startAzureTranscription();
+                return;
+            }
 
             const formData = new FormData();
             formData.append('audio_file', file);
@@ -860,6 +1011,7 @@
             document.getElementById('eventBadge').classList.add('hidden');
             document.getElementById('downloadBtn').classList.add('hidden');
             document.getElementById('downloadBtn').classList.remove('flex');
+            document.getElementById('detailGrid').classList.add('hidden');
             segmentCount = 0;
             document.getElementById('segCount').textContent = '0 段';
             document.getElementById('metaInfo').textContent = `文件: ${file.name}`;
@@ -958,7 +1110,290 @@
             }
         }
 
-        document.addEventListener('DOMContentLoaded', () => lucide.createIcons());
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            // Restore Azure credentials from localStorage
+            const storedKey = localStorage.getItem('az_speech_key');
+            const storedRegion = localStorage.getItem('az_region');
+            const storedLocale = localStorage.getItem('az_locale');
+            const storedPhrases = localStorage.getItem('az_phrases');
+            if (storedKey) document.getElementById('az_speech_key').value = storedKey;
+            if (storedRegion) document.getElementById('az_region').value = storedRegion;
+            if (storedLocale) document.getElementById('az_locale').value = storedLocale;
+            if (storedPhrases) document.getElementById('az_phrases').value = storedPhrases;
+        });
+
+        // ─────────────────────────────────────────────
+        // Azure 音频工具函数（移植自 speech_dog/audio.js）
+        // ─────────────────────────────────────────────
+        const AZ_TARGET_SAMPLE_RATE = 16000;
+        const AZ_BYTES_PER_SAMPLE = 2;
+        const AZ_SILENCE_WINDOW_MS = 100;
+        const AZ_MIN_SILENCE_MS = 700;
+        const AZ_MIN_SEGMENT_MS = 5000;
+        const AZ_MAX_SEGMENT_MS = 28000;
+        const AZ_SILENCE_THRESHOLD = 0.012;
+        const AZ_MAX_CONCURRENCY = 2;
+        const AZ_SEGMENT_TIMEOUT_MS = 25000;
+        const AZ_SEGMENT_RETRY_LIMIT = 1;
+
+        let _azStopRequested = false;
+        let _azRecognizers = [];
+
+        function azToMono(channelData) {
+            if (channelData.length === 1) return channelData[0];
+            const first = channelData[0], second = channelData[1];
+            const mono = new Float32Array(first.length);
+            for (let i = 0; i < first.length; i++) mono[i] = (first[i] + second[i]) * 0.5;
+            return mono;
+        }
+
+        function azResampleBuffer(src, srcRate, dstRate) {
+            if (srcRate === dstRate) return src;
+            const ratio = srcRate / dstRate;
+            const out = new Float32Array(Math.round(src.length / ratio));
+            for (let i = 0; i < out.length; i++) {
+                const pos = i * ratio;
+                const l = Math.floor(pos), r = Math.min(l + 1, src.length - 1);
+                out[i] = src[l] * (1 - (pos - l)) + src[r] * (pos - l);
+            }
+            return out;
+        }
+
+        function azFloat32ToInt16Bytes(buf) {
+            const bytes = new Uint8Array(buf.length * AZ_BYTES_PER_SAMPLE);
+            const view = new DataView(bytes.buffer);
+            for (let i = 0; i < buf.length; i++) {
+                const s = Math.max(-1, Math.min(1, buf[i]));
+                view.setInt16(i * AZ_BYTES_PER_SAMPLE, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+            }
+            return bytes;
+        }
+
+        function azBuildSegment(src, s, e) {
+            const floatData = src.slice(s, e);
+            return {
+                floatData,
+                pcmBytes: azFloat32ToInt16Bytes(floatData),
+                startMs: Math.round((s / AZ_TARGET_SAMPLE_RATE) * 1000),
+                endMs: Math.round((e / AZ_TARGET_SAMPLE_RATE) * 1000),
+            };
+        }
+
+        function azSplitBySilence(floatData) {
+            const spw = Math.max(1, Math.floor((AZ_TARGET_SAMPLE_RATE * AZ_SILENCE_WINDOW_MS) / 1000));
+            const minSilW = Math.max(1, Math.floor(AZ_MIN_SILENCE_MS / AZ_SILENCE_WINDOW_MS));
+            const minSeg = Math.floor((AZ_TARGET_SAMPLE_RATE * AZ_MIN_SEGMENT_MS) / 1000);
+            const maxSeg = Math.floor((AZ_TARGET_SAMPLE_RATE * AZ_MAX_SEGMENT_MS) / 1000);
+
+            const silence = [];
+            for (let off = 0; off < floatData.length; off += spw) {
+                const end = Math.min(off + spw, floatData.length);
+                let sum = 0;
+                for (let i = off; i < end; i++) sum += floatData[i] * floatData[i];
+                silence.push(Math.sqrt(sum / Math.max(1, end - off)) < AZ_SILENCE_THRESHOLD);
+            }
+
+            const segs = [];
+            let segStart = 0, silRun = 0;
+            for (let w = 0; w < silence.length; w++) {
+                const wStart = w * spw;
+                const len = wStart - segStart;
+                if (silence[w]) silRun++; else silRun = 0;
+                const found = silRun >= minSilW && len >= minSeg;
+                const force = len >= maxSeg;
+                if (!found && !force) continue;
+                let segEnd = wStart;
+                if (found) segEnd = Math.max(segStart + minSeg, (w - silRun + 1) * spw);
+                if (segEnd > segStart) { segs.push(azBuildSegment(floatData, segStart, segEnd)); segStart = segEnd; silRun = 0; }
+            }
+            if (segStart < floatData.length) segs.push(azBuildSegment(floatData, segStart, floatData.length));
+            return segs.length > 0 ? segs : [azBuildSegment(floatData, 0, floatData.length)];
+        }
+
+        async function azDecodeFile(file) {
+            const buf = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onerror = () => reject(new Error('文件读取失败'));
+                reader.onload = () => resolve(reader.result);
+                reader.readAsArrayBuffer(file);
+            });
+            const ctx = new AudioContext();
+            try {
+                const ab = await ctx.decodeAudioData(buf.slice(0));
+                const chs = [];
+                for (let i = 0; i < ab.numberOfChannels; i++) chs.push(ab.getChannelData(i));
+                const mono = azToMono(chs);
+                const resampled = azResampleBuffer(mono, ab.sampleRate, AZ_TARGET_SAMPLE_RATE);
+                return { floatData: resampled, durationMs: Math.round(ab.duration * 1000), originalSampleRate: ab.sampleRate, channels: ab.numberOfChannels };
+            } finally { await ctx.close(); }
+        }
+
+        function azFmt(ms) {
+            const s = Math.round((ms || 0) / 1000);
+            return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+        }
+
+        function azCloseAll() {
+            for (const r of _azRecognizers) { try { r.close(); } catch (_) {} }
+            _azRecognizers = [];
+        }
+
+        function azCreateRecognizer(speechConfig, pcmBytes) {
+            const fmt = SpeechSDK.AudioStreamFormat.getWaveFormatPCM(16000, 16, 1);
+            const push = SpeechSDK.AudioInputStream.createPushStream(fmt);
+            push.write(pcmBytes.buffer.slice(0));
+            push.close();
+            const rec = new SpeechSDK.SpeechRecognizer(speechConfig, SpeechSDK.AudioConfig.fromStreamInput(push));
+            _azRecognizers.push(rec);
+            return rec;
+        }
+
+        function azRecognizeSegment(speechConfig, segment, phrases, idx, total) {
+            if (_azStopRequested) return Promise.resolve('');
+            const rec = azCreateRecognizer(speechConfig, segment.pcmBytes);
+            const pl = SpeechSDK.PhraseListGrammar.fromRecognizer(rec);
+            for (const p of phrases) pl.addPhrase(p);
+            document.getElementById('metaInfo').textContent = `分片 ${idx + 1}/${total} 已提交到 Azure`;
+            return new Promise((resolve, reject) => {
+                const timer = setTimeout(() => {
+                    rec.close(); _azRecognizers = _azRecognizers.filter(r => r !== rec);
+                    reject(new Error(`分片 ${idx + 1} 识别超时`));
+                }, AZ_SEGMENT_TIMEOUT_MS);
+                rec.recognizeOnceAsync(
+                    result => {
+                        clearTimeout(timer); rec.close(); _azRecognizers = _azRecognizers.filter(r => r !== rec);
+                        if (result.reason === SpeechSDK.ResultReason.RecognizedSpeech && result.text) resolve(result.text);
+                        else if (result.reason === SpeechSDK.ResultReason.NoMatch) resolve('');
+                        else reject(new Error(result.errorDetails || '分片识别失败'));
+                    },
+                    err => { clearTimeout(timer); rec.close(); _azRecognizers = _azRecognizers.filter(r => r !== rec); reject(new Error(err)); }
+                );
+            });
+        }
+
+        async function startAzureTranscription() {
+            const file = document.getElementById('audio_file').files[0];
+            const key = document.getElementById('az_speech_key').value.trim();
+            const region = document.getElementById('az_region').value.trim();
+            if (!key || !region) { setStatus('请填写 Azure Speech Key 和 Region', 'error'); return; }
+
+            // Persist to localStorage
+            localStorage.setItem('az_speech_key', key);
+            localStorage.setItem('az_region', region);
+            localStorage.setItem('az_locale', document.getElementById('az_locale').value);
+            localStorage.setItem('az_phrases', document.getElementById('az_phrases').value);
+
+            const locale = document.getElementById('az_locale').value;
+            const speedMode = document.getElementById('az_speed_mode').value;
+            const phrases = document.getElementById('az_phrases').value.split(/[,\n]/).map(s => s.trim()).filter(Boolean);
+
+            // Reset UI
+            const resultBox = document.getElementById('resultBox');
+            resultBox.value = '';
+            resultBox.classList.remove('hidden');
+            document.getElementById('emptyState').classList.add('hidden');
+            document.getElementById('infoBadge').classList.add('hidden');
+            document.getElementById('emotionBadge').classList.add('hidden');
+            document.getElementById('eventBadge').classList.add('hidden');
+            document.getElementById('downloadBtn').classList.add('hidden');
+            document.getElementById('downloadBtn').classList.remove('flex');
+            segmentCount = 0;
+            document.getElementById('segCount').textContent = '0 段';
+            document.getElementById('metaInfo').textContent = `文件: ${file.name}`;
+            setStatus('正在解码音频...', 'loading');
+            setRunning(true);
+
+            _azStopRequested = false;
+            azCloseAll();
+
+            try {
+                const decoded = await azDecodeFile(file);
+                setStatus('正在进行静音切片', 'loading');
+                const segments = azSplitBySilence(decoded.floatData);
+                document.getElementById('segCount').textContent = `0/${segments.length} 段`;
+                document.getElementById('metaInfo').textContent = `已解码 ${azFmt(decoded.durationMs)} 音频，切成 ${segments.length} 个分片`;
+
+                // Populate detail grid
+                document.getElementById('detailGrid').classList.remove('hidden');
+                document.getElementById('dg_file').textContent = `${file.name} · ${Math.round(file.size / 1024)} KB`;
+                document.getElementById('dg_decode').textContent = `${decoded.channels} 声道 · ${decoded.originalSampleRate}Hz → 16000Hz`;
+                document.getElementById('dg_duration').textContent = azFmt(decoded.durationMs);
+                document.getElementById('dg_segments').textContent = `${segments.length} 段`;
+                const workerCountDisplay = speedMode === 'fast' ? Math.min(AZ_MAX_CONCURRENCY, segments.length) : 1;
+                document.getElementById('dg_parallel').textContent = `共 ${workerCountDisplay} 路处理中`;
+
+                const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(key, region);
+                speechConfig.speechRecognitionLanguage = locale;
+                speechConfig.outputFormat = SpeechSDK.OutputFormat.Detailed;
+                speechConfig.setProperty(SpeechSDK.PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs, '2500');
+
+                setStatus('正在流式转写', 'loading');
+
+                const results = {};
+                let nextIdx = 0, completedCount = 0, flushedIdx = -1;
+
+                function flushResults() {
+                    let i = flushedIdx + 1;
+                    const chunks = [];
+                    while (results[i] !== undefined) { if (results[i]) chunks.push(results[i]); i++; }
+                    if (i === flushedIdx + 1) return;
+                    flushedIdx = i - 1;
+                    if (!chunks.length) return;
+                    resultBox.value = [resultBox.value, ...chunks].filter(Boolean).join('\n');
+                    resultBox.scrollTop = resultBox.scrollHeight;
+                }
+
+                async function worker() {
+                    while (nextIdx < segments.length && !_azStopRequested) {
+                        const curIdx = nextIdx++;
+                        const seg = segments[curIdx];
+                        let text = '', attempt = 0;
+                        while (attempt <= AZ_SEGMENT_RETRY_LIMIT) {
+                            try {
+                                text = await azRecognizeSegment(speechConfig, seg, phrases, curIdx, segments.length);
+                                break;
+                            } catch (e) {
+                                attempt++;
+                                if (attempt > AZ_SEGMENT_RETRY_LIMIT) throw e;
+                                document.getElementById('metaInfo').textContent = `分片 ${curIdx + 1} 超时，重试 ${attempt}/${AZ_SEGMENT_RETRY_LIMIT}`;
+                            }
+                        }
+                        results[curIdx] = text;
+                        completedCount++;
+                        segmentCount = completedCount;
+                        document.getElementById('segCount').textContent = `${completedCount}/${segments.length} 段`;
+                        document.getElementById('dg_segments').textContent = `${completedCount}/${segments.length} 段`;
+                        flushResults();
+                        setStatus('实时转写中...', 'loading');
+                    }
+                }
+
+                const workerCount = speedMode === 'fast' ? Math.min(AZ_MAX_CONCURRENCY, segments.length) : 1;
+                await Promise.all(Array.from({ length: workerCount }, () => worker()));
+
+                if (!_azStopRequested) {
+                    azCloseAll();
+                    setRunning(false);
+                    setStatus(`转写完成，共 ${completedCount} 段`, 'success');
+                    document.getElementById('metaInfo').textContent = `文件: ${file.name} · ${completedCount} 段`;
+
+                    const blob = new Blob([resultBox.value], { type: 'text/plain;charset=utf-8' });
+                    const url = URL.createObjectURL(blob);
+                    const dlBtn = document.getElementById('downloadBtn');
+                    dlBtn.href = url;
+                    dlBtn.download = `${file.name}.txt`;
+                    dlBtn.removeAttribute('onclick');
+                    dlBtn.classList.remove('hidden');
+                    dlBtn.classList.add('flex');
+                }
+            } catch (e) {
+                azCloseAll();
+                setRunning(false);
+                setStatus('转写失败: ' + e.message, 'error');
+                document.getElementById('metaInfo').textContent = '执行失败';
+            }
+        }
     </script>
 </body>
 
