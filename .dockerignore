@@ -1,0 +1,31 @@
+# Git
+.git/
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+
+# Virtual environments (不打进镜像)
+.venv/
+venv/
+env/
+
+# 运行时数据（用 volume 挂载）
+uploads/
+outputs/
+
+# 开发工具
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 文档
+*.md
+docs/
+
+# macOS
+.DS_Store
