@@ -3,6 +3,10 @@ FROM python:3.10-slim AS builder
 
 WORKDIR /app
 
+# 换用阿里云 apt 镜像（国内服务器必须）
+RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
+    sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list
+
 # 安装构建依赖
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
@@ -22,7 +26,9 @@ LABEL description="Speech transcription server: Whisper / SenseVoice / Azure"
 WORKDIR /app
 
 # 运行时系统依赖：ffmpeg (音频解码) + libsndfile (librosa)
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
+    sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list && \
+    apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libsndfile1 \
     && rm -rf /var/lib/apt/lists/*
