@@ -346,81 +346,108 @@ def generate_sensevoice(data):
                 "output_file": str(output_path),
             },
             ensure_ascii=False,
-        ) + "\n"
-
+        ) + "  " * 1024 + "\n"
+        import librosa
         from funasr.utils.postprocess_utils import rich_transcription_postprocess
+        from funasr import AutoModel
+        import re
 
         model = get_sv_model(data["device"])
+        
+        # Load VAD model separately or just let FunASR handle it by passing the audio twice?
+        # A simpler approach: use the same SenseVoice model's built-in VAD but disable merge to get chunks.
+        # However, FunASR SenseVoice `merge_vad=False` returns a single text. 
+        # So we explicitly load FSMN-VAD to get timestamps:
+        vad_model = AutoModel(model='iic/speech_fsmn_vad_zh-cn-16k-common-pytorch', device=data["device"])
+        vad_res = vad_model.generate(input=str(temp_path))
+        
+        if not vad_res or 'value' not in vad_res[0]:
+            output_path.unlink(missing_ok=True)
+            yield json.dumps(
+                {"type": "error", "error": "无法分析音频结构，请检查音频文件。"},
+                ensure_ascii=False,
+            ) + "  " * 1024 + "\n"
+            return
+            
+        segments_timing = vad_res[0]['value']
+        audio, sr = librosa.load(str(temp_path), sr=16000)
 
-        res = model.generate(
-            input=str(temp_path),
-            cache={},
-            language=data["language"],
-            use_itn=data["use_itn"],
-            batch_size_s=60,
-            merge_vad=True,
-            ban_emo_unk=False,
-        )
+        all_emotion_labels = set()
+        all_event_labels = set()
+        detected_lang = data["language"]
 
-        if not res:
+        # If it's empty
+        if not segments_timing:
             output_path.unlink(missing_ok=True)
             yield json.dumps(
                 {"type": "error", "error": "转写结果为空，请检查音频文件是否有效。"},
                 ensure_ascii=False,
-            ) + "\n"
+            ) + "  " * 1024 + "\n"
             return
 
-        # SenseVoice 一次性返回所有结果，解析后逐段 yield 以复用前端流式逻辑
-        raw_text = res[0].get("text", "")
-        clean_text = rich_transcription_postprocess(raw_text)
-
-        # 提取情感/事件标签（SenseVoice 输出格式：<|emotion|><|event|><|lang|>text<|/event|>...）
-        import re
-        emotion_tags = re.findall(r"<\|([^|/][^|]*)\|>", raw_text)
-        emotion_info = ", ".join(dict.fromkeys(
-            t for t in emotion_tags
-            if t not in {"HAPPY", "SAD", "ANGRY", "FEARFUL", "DISGUSTED", "SURPRISED", "NEUTRAL",
-                         "zh", "en", "ja", "ko", "yue", "nospeech",
-                         "BGM", "Laughter", "Applause", "Cry", "Sneeze", "Breath", "Cough",
-                         "Speech", "Music", "Noise", "SPECIAL"}
-            and not t.startswith("lang")
-        )) or ""
-
-        # 按句子分段写入文件并逐句 stream
-        lines = [l.strip() for l in clean_text.splitlines() if l.strip()]
-        if not lines:
-            # 单段全文
-            lines = [clean_text.strip()] if clean_text.strip() else []
-
         with output_path.open("w", encoding="utf-8") as f:
-            for line in lines:
-                f.write(line + "\n")
+            for start_ms, end_ms in segments_timing:
+                start_samp = int((start_ms / 1000.0) * sr)
+                end_samp = int((end_ms / 1000.0) * sr)
+                chunk = audio[start_samp:end_samp]
+                
+                # If chunk is too short, skip
+                if len(chunk) < 400:
+                    continue
+
+                res = model.generate(
+                    input=chunk, 
+                    cache={}, 
+                    language=data["language"], 
+                    use_itn=data["use_itn"], 
+                    ban_emo_unk=False
+                )
+                
+                if not res:
+                    continue
+                    
+                raw_text = res[0].get("text", "")
+                clean_text = rich_transcription_postprocess(raw_text).strip()
+                
+                if not clean_text:
+                    continue
+
+                # 提取情感/事件/语言标签
+                lang_match = re.search(r"<\|(zh|en|ja|ko|yue|nospeech)\|>", raw_text)
+                if lang_match:
+                    detected_lang = lang_match.group(1)
+
+                emotion_labels = re.findall(r"<\|(HAPPY|SAD|ANGRY|FEARFUL|DISGUSTED|SURPRISED|NEUTRAL)\|>", raw_text)
+                event_labels = re.findall(r"<\|(BGM|Laughter|Applause|Cry|Sneeze|Breath|Cough)\|>", raw_text)
+                all_emotion_labels.update(emotion_labels)
+                all_event_labels.update(event_labels)
+                
+                start_s = start_ms / 1000.0
+                end_s = end_ms / 1000.0
+                
+                # Formatted text matching Whisper style
+                formatted_line = f"[{start_s:.2f}-{end_s:.2f}] {clean_text}"
+                
+                f.write(formatted_line + "\n")
                 yield json.dumps(
                     {
                         "type": "segment",
-                        "text": line,
+                        "text": formatted_line,
                         "output_file": str(output_path),
                     },
                     ensure_ascii=False,
-                ) + "\n"
+                ) + "  " * 1024 + "\n"
 
         if output_path.stat().st_size == 0:
             output_path.unlink(missing_ok=True)
             yield json.dumps(
                 {"type": "error", "error": "转写结果为空，请检查音频文件是否有效。"},
                 ensure_ascii=False,
-            ) + "\n"
+            ) + "  " * 1024 + "\n"
             return
 
-        # 从原始输出中提取语言标签
-        lang_match = re.search(r"<\|(zh|en|ja|ko|yue|nospeech)\|>", raw_text)
-        detected_lang = lang_match.group(1) if lang_match else data["language"]
-
-        # 提取情感、事件标签用于展示
-        emotion_labels = re.findall(r"<\|(HAPPY|SAD|ANGRY|FEARFUL|DISGUSTED|SURPRISED|NEUTRAL)\|>", raw_text)
-        event_labels = re.findall(r"<\|(BGM|Laughter|Applause|Cry|Sneeze|Breath|Cough)\|>", raw_text)
-        emotion_display = ", ".join(dict.fromkeys(emotion_labels)) if emotion_labels else ""
-        event_display = ", ".join(dict.fromkeys(event_labels)) if event_labels else ""
+        emotion_display = ", ".join(all_emotion_labels)
+        event_display = ", ".join(all_event_labels)
 
         download_url = f"/download/{output_path.name}"
         yield json.dumps(
@@ -436,7 +463,8 @@ def generate_sensevoice(data):
                 },
             },
             ensure_ascii=False,
-        ) + "\n"
+        ) + "  " * 1024 + "\n"
+
 
     except Exception as e:
         yield json.dumps(
